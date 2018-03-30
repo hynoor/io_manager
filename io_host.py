@@ -16,9 +16,12 @@ class IoHost:
         '_output_size'
     )
 
-    def __init__(self, ip=None, port=22, user='root', password='Password123!'):
-        """
-        initializer
+    def __init__(self, ip=None, port=22, user='root', password='hynoor'):
+        """ initializer
+        :param ip       : host ip address
+        :param port     : port number to be connected
+        :param user     : user to be used for connection
+        :param password : password to be used for connection
         """
         self._ip = ip
         self._port = port
@@ -34,18 +37,19 @@ class IoHost:
 
     def run(self, workers=1, task=None, background=True):
         """ execute given task
-        :param workers: number of processes to be launched
-        :param task: specific task to be executed
-        :return: results of finished task
+        :param workers : number of processes to be launched
+        :param task    : specific task to be executed
+        :return        : results of finished task
         """
-        assert isinstance(task, list), RuntimeError("Error: Parameter 'task' is required")
+        if task is None:
+            raise RuntimeError("Error: Parameter 'task' is required")
         channels = []
         exceptions = []
+        output = []
         for _ in xrange(workers):
             channel = self._client.get_transport().open_session()
             channels.append(channel)
             channel.exec_command(task)
-
         while True:
             done = True
             for ch in channels:
@@ -53,16 +57,18 @@ class IoHost:
                     done = False
             if done:
                 break
-        if not background:
-            r, w, x = select.select(channels, [], [])
-            if len(r) > 0:
-                for ch in channels:
-                    print(ch.recv(self._output_size))
+        r, w, x = select.select(channels, [], [])
+        if len(r) > 0:
+            for ch in channels:
+                res = ch.recv(self._output_size)
+                output.append(res)
+                if not background:
+                    print(res)
         if ch.recv_stderr_ready():
-            channels.append(ch.recv_stderr(self._output_size))
-
+            exceptions.append(ch.recv_stderr(self._output_size))
         if len(exceptions) > 0:
             raise IOError(exceptions)
+        return output
         
     def run_async(self, workers=1, task=None):
         """ execute given task asynchronously 
@@ -77,7 +83,7 @@ class IoHost:
             channel = self._client.get_transport().open_session()
             channels.append(channel)
             channel.exec_command(task)
-            
+
         return channels
 
     def add_disk(self, disk=None):
