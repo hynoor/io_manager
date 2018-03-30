@@ -60,8 +60,8 @@ class IoTask:
     """
     __slots__ = (
         '_status',
-        '_finished_jobs',
-        '_running_jobs',
+        '_done',
+        '_running',
         '_job_status'
         '_host',
         '_exception',
@@ -73,38 +73,29 @@ class IoTask:
         """ Initialize object
         """
         assert isinstance(jobs, list), RuntimeError("Error: Parameter list requires a list type")
-        self._finished_jobs = list()
-        self._job_status = dict()
-        for idx, job in enumerate(jobs, start=1):
-            self._job_status[idx] = [job, 'running']
+        self._done = list()
+        self._job_status = list()
+        for job in jobs:
+            self._job_status.append([job, 'running'])
         self._exception = []
         self._output_size = 1024
         self._output = []
 
     def _update(self):
-        """ Query task status (running|finished|failed)
-        :return: running|finished|failed
+        """ Query task status (running|completed|failed)
+        :return: running|completed|failed
         """
-        status = 'running'
-        for idx, job in self._job_status.items():
+        for job in self._job_status:
             if job[0].exit_status_ready():
-                self._job_status[idx][1] = 'finished'
-                self._finished_jobs.append(job[0])
-        if len(self._finished_jobs) < len(self._job_status.keys()):
+                job[1] = 'completed'
+        self._done = [job[0] for job in self._job_status if job[1] == 'completed']
+        if len([job[0] for job in self._job_status if job[1] == 'running']) > 0:
             status = 'running'
-        elif len(self._finished_jobs) == len(self._job_status.keys()):
-            status = 'finished'
+        elif len([job[0] for job in self._job_status if job[1] == 'running']) == 0:
+            status = 'completed'
+        else:
+            raise RuntimeError("ERROR")
 
-        if status == 'finished':
-            r, w, x = select.select(self._finished_jobs, [], [])
-            if len(r) > 0:
-                for job in self._finished_jobs:
-                    res = job.recv(self._output_size)
-                    self._output.append(res)
-
-            for job in self._finished_jobs:
-                if job.recv_stderr_ready():
-                    self._exception.append(job.recv_stderr(self._output_size))
         return status
 
     @property
@@ -115,31 +106,40 @@ class IoTask:
         """
         # update status
         self._update()
-        return len([job for job in self._job_status.values() if job[1] == 'running'])
+        return len([job[0] for job in self._job_status if job[1] == 'running'])
 
     @property
-    def output(self):
+    def stdout(self):
         """
         Output of running task
         :return: output
         """
         self._update()
+        r, w, x = select.select(self._done, [], [], 3)
+        if len(r) > 0:
+            for job in self._done:
+                res = job.recv(self._output_size)
+                if res != '':
+                    self._output.append(res)
         return self._output
 
     @property
-    def exception(self):
+    def stderr(self):
         """
         Output of running task
         :return: output
         """
         self._update()
+        for job in self._done:
+            if job.recv_stderr_ready():
+                self._exception.append(job.recv_stderr(self._output_size))
         return self._exception
 
     @property
     def status(self):
         """
         Task overall status
-        :return: (running|finished|failed)
+        :return: (running|completed|failed)
         """
         return self._update()
 
