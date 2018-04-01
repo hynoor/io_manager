@@ -1,7 +1,8 @@
 # A class implements the main manipulations of I/O relevant, the interface class to ouside caller
-from io_engine import IoEngine
+from io_engine.io_operator import IoOperator
 from io_host import IoHost
 import select
+import time
 
 
 class IoManager:
@@ -11,6 +12,7 @@ class IoManager:
     __slots__ = (
         '_hosts',
         '_engine',
+        'command',
     )
 
     def __init__(self, io_engine=None, io_hosts=None):
@@ -21,13 +23,14 @@ class IoManager:
         """
         self._engine = io_engine
         self._hosts = set()
+        self.command = 'python /tmp/sleep.py'
 
     def load_engine(self, io_engine=None):
         """ load specific io engine
         :param io_engine : <IoEngine> the underlying io engine object
         :return          : <None>
         """
-        assert isinstance(io_engine, IoEngine), "Error: Parameter 'io_engine' is required as IoEngine object"
+        assert isinstance(io_engine, IoOperator), "Error: Parameter 'io_engine' is required as IoEngine object"
         self._engine = io_engine
 
     def add_host(self, host_ip=None):
@@ -38,20 +41,42 @@ class IoManager:
         assert host_ip is not None, "Error: Parameter 'io_engine' is required as IoEngine object"
         host = IoHost(ip=host_ip)
         self._hosts.add(host)
-        
-    def start_io(self, workers=1, async=False):
+
+    def remove_host(self, host_ip=None):
+        """ add io host
+        :param host_ip : <IoHost> the underlying io host to be removed from host pool
+        :return        : <None>
+        """
+        assert host_ip is not None, "Error: Parameter 'io_engine' is required as IoEngine object"
+        host = IoHost(ip=host_ip)
+        if host in self._hosts:
+            self._hosts.remove(host)
+        del host
+
+    def start_io(self, workers=1, output=False, async=False, timeout=7200):
         """ io executor
         :param workers : <Number> the underlying io host object to issue I/O
+        :param output  : <Boolean> if print stdout during waiting
         :param async   : <Bool> If asynchronously execute the io, if async is False, run host one by one
+        :param timeout : <Number> timeout to be waited
         :return        : return a task object to track the IO jobs running on remote hosts
         """
         task = []
+        # assign the jobs to works in round robin fashion
+        workers_per_host = workers // len(self._hosts)
+        remain_workers = workers % len(self._hosts)
+        allocated_workers = []
+        for w in range(len(self._hosts)):
+            allocated_workers.append(workers_per_host)
+        for r in range(remain_workers):
+            allocated_workers[r] = allocated_workers[r] + 1
+        for h, w in zip(self._hosts, allocated_workers):
+            task = task + h.run_async(workers=w, task=self.command)
+        task_obj = IoTask(jobs=task)
         if async:
-            for h in self._hosts:
-                task = task + h.run_async(workers=workers, task='python /tmp/test_file.py')
-            return IoTask(jobs=task)
-
-        #h.run(workers=workers, task='python /tmp/test_file.py', background=False)
+            return task_obj
+        else:
+            task_obj.wait(timeout=timeout, output=output, interval=3)
 
 
 class IoTask:
@@ -75,6 +100,7 @@ class IoTask:
         assert isinstance(jobs, list), RuntimeError("Error: Parameter list requires a list type")
         self._done = list()
         self._job_status = list()
+        # initializing coming jobs ...
         for job in jobs:
             self._job_status.append([job, 'running'])
         self._exception = []
@@ -82,7 +108,7 @@ class IoTask:
         self._output = []
 
     def _update(self):
-        """ Query task status (running|completed|failed)
+        """ refresh task status (running|completed|failed)
         :return: running|completed|failed
         """
         for job in self._job_status:
@@ -94,9 +120,28 @@ class IoTask:
         elif len([job[0] for job in self._job_status if job[1] == 'running']) == 0:
             status = 'completed'
         else:
-            raise RuntimeError("ERROR")
+            raise RuntimeError("ERROR: Invalid status!")
 
         return status
+
+    def wait(self, output=False, timeout=7200, interval=30):
+        """ Wai the task till completed
+        :param timeout  : <number> the timeout to wait
+        :param output   : <Boolean> if print output during waiting
+        :param interval : <number> the interval for polling status
+        :return:
+        """
+        # blocking mode doesn't have to use even to all callback just simply waiting
+        duration_left = timeout
+        while duration_left > 0:
+            if self.status == 'running':
+                if output:
+                    print(self.stdout)
+                time.sleep(interval)
+                duration_left -= interval
+            else:
+                return
+        raise RuntimeError("Error: Task didn't completed in %d timeout!" % timeout)
 
     @property
     def running_job(self):
@@ -112,7 +157,7 @@ class IoTask:
     def stdout(self):
         """
         Output of running task
-        :return: output
+        :return: stdout
         """
         self._update()
         r, w, x = select.select(self._done, [], [], 3)
@@ -142,7 +187,4 @@ class IoTask:
         :return: (running|completed|failed)
         """
         return self._update()
-
-
-
 
