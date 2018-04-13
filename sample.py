@@ -12,6 +12,9 @@ def test():
     io_mgr = IoManager()
     io_mgr.add_host(host_ip=ip1)
     io_mgr.add_host(host_ip=ip2)
+    hosts = io_mgr.get_hosts()
+    for h in hosts:
+        h.add_disk("/dev/sda")
     io_mgr.start_io(workers=20, output=True, async=False)
     """
     while task.status == 'running':

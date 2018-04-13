@@ -60,16 +60,14 @@ class IoHost:
     def _reallocate(self, number_jobs=1):
         """ allocate jobs to targets storage objects in round-robin fashion
         """
-        jobs_per_disk = self._number_jobs // len(self._disks)
-        remain_jobs = self._number_jobs % len(self._disks)
+        assert len(self._disks) > 0, RuntimeError("No storage target was added to host")
+        jobs_per_target = number_jobs // len(self._disks)
+        remain_jobs = number_jobs % len(self._disks)
         allocated_jobs = []
-        for _ in range(self._number_jobs):
-            allocated_jobs.append(jobs_per_disk)
+        for _ in range(number_jobs):
+            allocated_jobs.append(jobs_per_target)
         for r in range(remain_jobs):
             allocated_jobs[r] += 1
-        for _ in allocated_jobs:
-
-
         return allocated_jobs
 
     def add_disk(self, path=None):
@@ -84,7 +82,7 @@ class IoHost:
         :param disk: disk object to be removed from host's disk pool
         :return:
         """
-        disk = BlockStoreage(path=path) in self._disks():
+        disk = BlockStoreage(path=path)
         if disk in self._disks():
             self._disks.remove(disk)
         else:

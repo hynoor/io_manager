@@ -72,12 +72,19 @@ class IoManager:
         for r in range(remain_workers):
             allocated_workers[r] += 1
         for h, w in zip(self._hosts, allocated_workers):
-            task = task + h.run_async(workers=w, task=self._command)
+            task = task + h.run_async(workers=w, command=self._command)
         task_obj = IoTask(jobs=task)
         if async:
             return task_obj
         else:
             task_obj.wait(timeout=timeout, output=output, interval=3)
+
+    def get_hosts(self):
+        """ get io host 
+        :return  : all host objects attached to io manager
+        """
+        return(list(self._hosts))
+        
 
 
 class IoTask:
