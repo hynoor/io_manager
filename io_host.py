@@ -1,10 +1,10 @@
 # a class wrappers the host used to issue I/O reques
 import paramiko
+import os.path
 
 class IoHost:
     """ IoHost class
     """
-
     __slots__ = (
         '_name',
         '_ip',
@@ -12,10 +12,12 @@ class IoHost:
         '_user',
         '_password',
         '_workers',
-        '_output_size'
+        '_output_size',
+        '_disks',
+        '_jobs',
     )
 
-    def __init__(self, ip=None, port=22, user='root', password='hynoor'):
+    def __init__(self, ip=None, port=22, user='root', password='Password123!'):
         """ initializer
         :param ip       : host ip address
         :param port     : port number to be connected
@@ -25,6 +27,8 @@ class IoHost:
         self._ip = ip
         self._port = port
         self._user = user
+        self._disks = set()
+        self._jobs = None
         self._password = password
         self._output_size = 1024
         
@@ -34,35 +38,57 @@ class IoHost:
         self._client.set_missing_host_key_policy(paramiko.MissingHostKeyPolicy())
         self._client.connect(self._ip, self._port, self._user, self._password)
 
-    def run_async(self, workers=1, task=None):
-        """ execute given task asynchronously 
+    def run_async(self, workers=1, command=None):
+        """ execute given task asynchronously
         :param workers: number of processes to be launched
         :param task: specific task to be executed
         :return: a list of fd to track job status
         """
-        if task is None:
+        if command is None:
             raise RuntimeError("Error: Parameter 'task' is required")
+        self._reallocate(number_jobs=workers)
         channels = []
-        for _ in xrange(workers):
+        allocated_jobs = self._reallocate()
+        for _, d in zip(allocated_jobs, self._disks) :
             channel = self._client.get_transport().open_session()
-            channels.append(channel)
-            channel.exec_command(task)
+            channel.exec_command(command)
+            self._jobs.add(channel)
+            channels.append((channel, self._ip))
 
         return channels
 
-    def add_disk(self, disk=None):
+    def _reallocate(self, number_jobs=1):
+        """ allocate jobs to targets storage objects in round-robin fashion
         """
+        jobs_per_disk = self._number_jobs // len(self._disks)
+        remain_jobs = self._number_jobs % len(self._disks)
+        allocated_jobs = []
+        for _ in range(self._number_jobs):
+            allocated_jobs.append(jobs_per_disk)
+        for r in range(remain_jobs):
+            allocated_jobs[r] += 1
+        for _ in allocated_jobs:
+
+
+        return allocated_jobs
+
+    def add_disk(self, path=None):
+        """ add storage to host
         :param disk: disk object to be added for I/O
         :return: 
         """
-        pass
+        self._disks.add(BlockStoreage(path=path))
 
     def remove_disk(self, disk=None):
         """
         :param disk: disk object to be removed from host's disk pool
         :return:
         """
-        pass
+        disk = BlockStoreage(path=path) in self._disks():
+        if disk in self._disks():
+            self._disks.remove(disk)
+        else:
+            del disk
 
     @property
     def ip_address(self):
@@ -95,3 +121,27 @@ class IoStorage:
         :param path: storage accessing path
         """
         self._path = path
+        self._size = os.path.getsize(self._path)
+
+    @property
+    def size(self):
+        """
+        property 'size'
+        :return: size
+        """
+        return self._size
+
+    def path(self):
+        """
+        property 'path'
+        :return: path
+        """
+        return self._path
+
+
+class BlockStoreage(IoStorage):
+    """
+    Class block device
+    """
+
+

@@ -3,6 +3,7 @@ from io_engine.io_operator import IoOperator
 from io_host import IoHost
 import select
 import time
+from collections import defaultdict
 
 
 class IoManager:
@@ -12,7 +13,7 @@ class IoManager:
     __slots__ = (
         '_hosts',
         '_engine',
-        'command',
+        '_command',
     )
 
     def __init__(self, io_engine=None, io_hosts=None):
@@ -23,7 +24,7 @@ class IoManager:
         """
         self._engine = io_engine
         self._hosts = set()
-        self.command = 'python /tmp/sleep.py'
+        self._command = 'python /tmp/test_file.py'
 
     def load_engine(self, io_engine=None):
         """ load specific io engine
@@ -69,9 +70,9 @@ class IoManager:
         for w in range(len(self._hosts)):
             allocated_workers.append(workers_per_host)
         for r in range(remain_workers):
-            allocated_workers[r] = allocated_workers[r] + 1
+            allocated_workers[r] += 1
         for h, w in zip(self._hosts, allocated_workers):
-            task = task + h.run_async(workers=w, task=self.command)
+            task = task + h.run_async(workers=w, task=self._command)
         task_obj = IoTask(jobs=task)
         if async:
             return task_obj
@@ -99,25 +100,26 @@ class IoTask:
         """
         assert isinstance(jobs, list), RuntimeError("Error: Parameter list requires a list type")
         self._done = list()
-        self._job_status = list()
+        self._job_status = defaultdict()
         # initializing coming jobs ...
-        for job in jobs:
-            self._job_status.append([job, 'running'])
-        self._exception = []
+        for j, h in jobs:
+            # data structure: {channel : [host_ip, status]}
+            self._job_status[j] = [h, 'running']
+        self._exception = list()
         self._output_size = 1024
-        self._output = []
+        self._output = list()
 
     def _update(self):
         """ refresh task status (running|completed|failed)
         :return: running|completed|failed
         """
-        for job in self._job_status:
-            if job[0].exit_status_ready():
-                job[1] = 'completed'
-        self._done = [job[0] for job in self._job_status if job[1] == 'completed']
-        if len([job[0] for job in self._job_status if job[1] == 'running']) > 0:
+        for job in self._job_status.keys():
+            if job.exit_status_ready():
+                self._job_status[job][1] = 'completed'
+        self._done = [job for job in self._job_status.keys() if self._job_status[job][1] == 'completed']
+        if len([job for job in self._job_status.keys() if self._job_status[job][1] == 'running']) > 0:
             status = 'running'
-        elif len([job[0] for job in self._job_status if job[1] == 'running']) == 0:
+        elif len([job for job in self._job_status.keys() if self._job_status[job][1] == 'running']) == 0:
             status = 'completed'
         else:
             raise RuntimeError("ERROR: Invalid status!")
@@ -151,21 +153,25 @@ class IoTask:
         """
         # update status
         self._update()
-        return len([job[0] for job in self._job_status if job[1] == 'running'])
+        return len([job for job in self._job_status.keys() if self._job_status[job][1] == 'running'])
 
     @property
-    def stdout(self):
+    def stdout(self, mode='increment'):
         """
         Output of running task
+        :param mode : Complete or incremental
         :return: stdout
         """
         self._update()
-        r, w, x = select.select(self._done, [], [], 3)
-        if len(r) > 0:
-            for job in self._done:
-                res = job.recv(self._output_size)
-                if res != '':
-                    self._output.append(res)
+        if len(self._done) > 0:
+            r, w, x = select.select(self._done, [], [], 3)
+            if len(r) > 0:
+                for job in self._done:
+                    res = job.recv(self._output_size)
+                    if res != '':
+                        self._output.append(res)
+                        if mode == 'increment':
+                            return res
         return self._output
 
     @property
