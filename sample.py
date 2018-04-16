@@ -15,14 +15,12 @@ def test():
     hosts = io_mgr.get_hosts()
     for h in hosts:
         h.add_disk("/dev/sda")
-    io_mgr.start_io(workers=20, output=True, async=False)
-    """
+    task = io_mgr.start_io(workers=20, output=True, async=True)
     while task.status == 'running':
         print("OUTPUT: %s" % task.stdout)
         print("still running")
         time.sleep(1)
     print("OUTPUT: %s" % task.stdout)
-    """
 
 
 if __name__ == '__main__':

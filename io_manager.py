@@ -5,6 +5,8 @@ import select
 import time
 from collections import defaultdict
 
+import pdb
+
 
 class IoManager:
     """
@@ -71,6 +73,7 @@ class IoManager:
             allocated_workers.append(workers_per_host)
         for r in range(remain_workers):
             allocated_workers[r] += 1
+        pdb.set_trace()
         for h, w in zip(self._hosts, allocated_workers):
             task = task + h.run_async(workers=w, command=self._command)
         task_obj = IoTask(jobs=task)
@@ -150,7 +153,7 @@ class IoTask:
                 duration_left -= interval
             else:
                 return
-        raise RuntimeError("Error: Task didn't completed in %d timeout!" % timeout)
+        raise RuntimeError("Error: Task didn't completed within %d timeout!" % timeout)
 
     @property
     def running_job(self):

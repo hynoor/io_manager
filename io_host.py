@@ -2,6 +2,8 @@
 import paramiko
 import os.path
 
+import pdb
+
 class IoHost:
     """ IoHost class
     """
@@ -28,7 +30,7 @@ class IoHost:
         self._port = port
         self._user = user
         self._disks = set()
-        self._jobs = None
+        self._jobs = set()
         self._password = password
         self._output_size = 1024
         
@@ -64,7 +66,7 @@ class IoHost:
         jobs_per_target = number_jobs // len(self._disks)
         remain_jobs = number_jobs % len(self._disks)
         allocated_jobs = []
-        for _ in range(number_jobs):
+        for _ in range(len(self._disks)):
             allocated_jobs.append(jobs_per_target)
         for r in range(remain_jobs):
             allocated_jobs[r] += 1
