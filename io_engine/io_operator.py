@@ -47,3 +47,29 @@ class IoOperator:
         :return                : *none*
         """
         pass
+
+    def baseline_io(self, io_size='4k', data_pattern='random', workers=1, execution_mode='process'):
+        """
+        set a base line io scenarios to exercise the staroge target in steady and continuese flux
+        :param io_size        : Size of each I/O to be issued
+        :param data_pattern   : Data pattern to be used in each IO
+        :param workers        : The scale of concurrency or parallelism
+        :param execution_mode : The mode of each work to be executed, thread or process
+
+        :return               : A dictionary stored every required parameter-value pairs
+        """
+        commands = dict() 
+        # implemetation of the baseline io scenario
+        return commands
+
+
+
+
+
+
+
+
+
+
+
+
